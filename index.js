@@ -9,7 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 
 let latestQR = '';
-const GROUP_ID = '120599025434049026@g.us';
+const GROUP_ID = '120363411370862499@g.us';
 const EXAM_DATE = new Date('2027-01-24T00:00:00+05:30');
 
 function getDaysLeft() {
