@@ -7,7 +7,7 @@ const PORT = process.env.PORT || 3000;
 
 let latestQR = '';
 let sockRef = null;
-const GROUP_ID = '120599025434049026@g.us'; // we will correct after logs
+const GROUP_ID = '120599025434049026@g.us';
 const EXAM_DATE = new Date('2027-01-24T00:00:00+05:30');
 
 function getDaysLeft(){ return Math.ceil((EXAM_DATE - new Date()) / (1000*60*60*24)); }
@@ -32,7 +32,6 @@ async function updateDP(sock){
     console.log(`✅ DP UPDATED: ${days} days left`);
   }catch(e){ 
     console.log('❌ DP Error:', e.message); 
-    console.log(e.stack);
   }
 }
 
@@ -54,7 +53,7 @@ async function startBot(){
       try{
         const groups = await sock.groupFetchAllParticipating();
         console.log('--- ALL GROUPS LIST ---');
-        Object.entries(groups).forEach(([id, g]) => console.log(`${g.subject} => ${id}`);
+        Object.entries(groups).forEach(([id, g]) => console.log(`${g.subject} => ${id}`));
         console.log('--- END LIST ---');
       }catch(e){ console.log('Fetch groups error', e.message); }
       await updateDP(sock);
