@@ -3,7 +3,7 @@ const { useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/bai
 const qrcode = require('qrcode');
 const express = require('express');
 const pino = require('pino');
-const Jimp = require('jimp');
+const { Jimp } = require('jimp');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -15,16 +15,16 @@ const EXAM_DATE = new Date('2027-01-24T00:00:00+05:30');
 function getDaysLeft(){ return Math.ceil((EXAM_DATE - new Date()) / (1000*60*60*24)); }
 
 async function generateImage(days){
-  const image = new Jimp(800, 800, '#ffffff');
-  const fontBig = await Jimp.loadFont(Jimp.FONT_SANS_128_BLACK);
-  const fontMed = await Jimp.loadFont(Jimp.FONT_SANS_64_BLACK);
-  const fontSmall = await Jimp.loadFont(Jimp.FONT_SANS_32_BLACK);
+  const image = new Jimp({ width: 800, height: 800, color: '#ffffff' });
+  const fontBig = await Jimp.loadFont('sans-128-black');
+  const fontMed = await Jimp.loadFont('sans-64-black');
+  const fontSmall = await Jimp.loadFont('sans-32-black');
   
-  image.print(fontBig, 0, 150, { text: days.toString(), alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER }, 800, 200);
-  image.print(fontMed, 0, 350, { text: 'DAYS LEFT', alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER }, 800, 100);
-  image.print(fontSmall, 0, 500, { text: 'JEE 2027 - Academic Allies', alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER }, 800, 100);
+  image.print({ font: fontBig, x: 0, y: 150, maxWidth: 800, maxHeight: 200, text: days.toString(), alignmentX: 'center' });
+  image.print({ font: fontMed, x: 0, y: 350, maxWidth: 800, maxHeight: 100, text: 'DAYS LEFT', alignmentX: 'center' });
+  image.print({ font: fontSmall, x: 0, y: 500, maxWidth: 800, maxHeight: 100, text: 'JEE 2027 - Academic Allies', alignmentX: 'center' });
   
-  const buf = await image.getBufferAsync(Jimp.MIME_JPEG);
+  const buf = await image.getBuffer('image/jpeg');
   console.log('JIMP Image created size:', buf.length);
   return buf;
 }
