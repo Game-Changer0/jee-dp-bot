@@ -104,4 +104,8 @@ app.get('/get-session', (req,res)=>{
     res.send(`<h3>Copy this FULL and add to Render ENV as SESSION_BASE64</h3><textarea style="width:95%;height:350px">${b64}</textarea>`);
   }catch(e){ res.send('Scan first! '+e.message); }
 });
+app.get('/logout', (req,res)=>{
+  try{ fs.rmSync('auth_info', {recursive:true, force:true}); }catch(e){}
+  res.send('Session cleared! Now do Manual Deploy > Clear cache & Deploy');
+});
 app.listen(PORT, ()=>console.log('Server '+PORT));
