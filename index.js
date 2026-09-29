@@ -106,6 +106,6 @@ app.get('/get-session', (req,res)=>{
 });
 app.get('/logout', (req,res)=>{
   try{ fs.rmSync('auth_info', {recursive:true, force:true}); }catch(e){}
-  res.send('Session cleared! Now do Manual Deploy > Clear cache & Deploy');
+  res.send('Session cleared! Now Clear cache & Deploy');
 });
 app.listen(PORT, ()=>console.log('Server '+PORT));
