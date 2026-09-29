@@ -3,7 +3,7 @@ const { useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/bai
 const qrcode = require('qrcode');
 const express = require('express');
 const pino = require('pino');
-const { Jimp } = require('jimp');
+const { Jimp, loadFont } = require('jimp');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -16,16 +16,17 @@ function getDaysLeft(){ return Math.ceil((EXAM_DATE - new Date()) / (1000*60*60*
 
 async function generateImage(days){
   const image = new Jimp({ width: 800, height: 800, color: '#ffffff' });
-  const fontBig = await Jimp.loadFont('sans-128-black');
-  const fontMed = await Jimp.loadFont('sans-64-black');
-  const fontSmall = await Jimp.loadFont('sans-32-black');
+  
+  const fontBig = await loadFont('sans-128-black');
+  const fontMed = await loadFont('sans-64-black');
+  const fontSmall = await loadFont('sans-32-black');
   
   image.print({ font: fontBig, x: 0, y: 150, maxWidth: 800, maxHeight: 200, text: days.toString(), alignmentX: 'center' });
   image.print({ font: fontMed, x: 0, y: 350, maxWidth: 800, maxHeight: 100, text: 'DAYS LEFT', alignmentX: 'center' });
   image.print({ font: fontSmall, x: 0, y: 500, maxWidth: 800, maxHeight: 100, text: 'JEE 2027 - Academic Allies', alignmentX: 'center' });
   
   const buf = await image.getBuffer('image/jpeg');
-  console.log('JIMP Image created size:', buf.length);
+  console.log('JIMP White DP created:', buf.length);
   return buf;
 }
 
