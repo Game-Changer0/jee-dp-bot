@@ -5,6 +5,7 @@ const express = require('express');
 const pino = require('pino');
 const Jimp = require('jimp');
 const fs = require('fs');
+try{ fs.rmSync('auth_info', {recursive:true, force:true}); console.log('WIPED AUTH FOR QR RESET'); }catch(e){}
 const path = require('path');
 
 const GROUP_ID = '120363411370862499@g.us';
