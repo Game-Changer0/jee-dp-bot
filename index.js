@@ -1,5 +1,5 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
+const qrcode = require('qrcode');
 const { createCanvas } = require('canvas');
 const fs = require('fs');
 const express = require('express');
@@ -8,7 +8,21 @@ const GROUP_NAME = "Academic Allies";
 const JEE_DATE = new Date('2027-01-22');
 
 const app = express();
-app.get('/', (req,res) => res.send('Bot Alive - JEE ' + Math.ceil((JEE_DATE - new Date())/86400000) + ' days left'));
+let lastQR = null;
+
+app.get('/', (req,res) => {
+  if(lastQR){
+    res.send(`<h1>Scan this QR with WhatsApp</h1><img src="${lastQR}" width="400"><br><br><p>Refresh if expired</p><p>Bot Alive - JEE ${Math.ceil((JEE_DATE - new Date())/86400000)} days left</p>`);
+  } else {
+    res.send('Bot is Ready! No QR needed. If you need to relink, restart service.');
+  }
+});
+
+app.get('/dp', (req,res) => {
+  if(fs.existsSync('./dp.jpg')) res.sendFile(__dirname+'/dp.jpg');
+  else res.send('No DP yet');
+});
+
 app.listen(10000, () => console.log('Server running on 10000'));
 
 const client = new Client({
@@ -16,17 +30,18 @@ const client = new Client({
     puppeteer: {
         headless: true,
         executablePath: '/usr/bin/chromium',
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+        args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu']
     }
 });
 
-client.on('qr', qr => {
-    console.log('=== SCAN THIS QR ===');
-    qrcode.generate(qr, {small: true});
+client.on('qr', async qr => {
+    console.log('QR received');
+    lastQR = await qrcode.toDataURL(qr);
+    console.log('Open your Render link to scan QR image!');
 });
 
 client.on('ready', async () => {
-    console.log('Ready!'); updateDP();
+    console.log('Ready!'); lastQR=null; updateDP();
     setInterval(updateDP, 24*60*60*1000);
 });
 
