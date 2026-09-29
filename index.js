@@ -17,44 +17,46 @@ function getDaysLeft() {
 }
 
 async function generateImage(days) {
-  const canvas = createCanvas(800, 800);
+  const canvas = createCanvas(640, 640);
   const ctx = canvas.getContext('2d');
   
-  // Background gradient
-  ctx.fillStyle = '#0f0f0f';
-  ctx.fillRect(0, 0, 800, 800);
-  
-  // Big number - use default sans-serif that exists on Linux
+  // WHITE background - so you can see if WhatsApp is making it black
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 200px sans-serif';
+  ctx.fillRect(0, 0, 640, 640);
+  
+  // Black border
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 20;
+  ctx.strokeRect(0, 0, 640, 640);
+  
+  // HUGE black number
+  ctx.fillStyle = '#000000';
+  ctx.font = 'bold 220px Sans';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(days.toString(), 400, 350);
+  ctx.fillText(days.toString(), 320, 260);
   
-  // Text
-  ctx.font = 'bold 50px sans-serif';
-  ctx.fillText('DAYS LEFT', 400, 450);
+  // Subtext
+  ctx.font = 'bold 50px Sans';
+  ctx.fillText('DAYS LEFT', 320, 400);
   
-  ctx.font = '24px sans-serif';
-  ctx.fillStyle = '#aaaaaa';
-  ctx.fillText('JEE 2027 - Academic Allies', 400, 720);
-  
-  return canvas.toBuffer('image/png');
+  ctx.font = 'bold 24px Sans';
+  ctx.fillText('JEE 2027', 320, 500);
+
+  const buf = canvas.toBuffer('image/jpeg', { quality: 0.9 });
+  console.log('Image buffer size:', buf.length);
+  return buf;
 }
 
 async function updateDP(sock) {
   try {
     const days = getDaysLeft();
     const img = await generateImage(days);
-    console.log(`Trying to update DP for ${GROUP_ID} with ${days} days`);
+    console.log(`Updating DP, image size ${img.length} bytes for ${GROUP_ID}`);
     await sock.updateProfilePicture(GROUP_ID, img);
-    console.log(`✅ DP UPDATED SUCCESS: ${days} days left`);
-    try {
-      await sock.groupUpdateSubject(GROUP_ID, `Academic Allies | ${days} Days Left`);
-      console.log('✅ Group name updated');
-    } catch (e) { console.log('Name update failed (needs admin):', e.message); }
+    console.log(`✅ DP UPDATED SUCCESS: ${days} days`);
   } catch (e) {
-    console.log('❌ DP Error:', e.message);
+    console.log('❌ DP Error:', e.message, e.stack);
   }
 }
 
