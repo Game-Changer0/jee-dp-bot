@@ -1,74 +1,61 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode');
-const { createCanvas } = require('canvas');
-const fs = require('fs');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { createCanvas, loadImage } = require('canvas');
+const qrcode = require('qrcode-terminal');
+const qrcode2 = require('qrcode');
 const express = require('express');
-
-const GROUP_NAME = "Academic Allies";
-const JEE_DATE = new Date('2027-01-22');
-
 const app = express();
-let lastQR = null;
+const PORT = process.env.PORT || 3000;
 
-app.get('/', (req,res) => {
-  if(lastQR){
-    res.send(`<h1>Scan this QR with WhatsApp</h1><img src="${lastQR}" width="400"><br><br><p>Refresh if expired</p><p>Bot Alive - JEE ${Math.ceil((JEE_DATE - new Date())/86400000)} days left</p>`);
-  } else {
-    res.send('Bot is Ready! No QR needed. If you need to relink, restart service.');
-  }
-});
+let latestQR = '';
+const GROUP_ID = '120599025434049026@g.us'; // your Academic Allies
 
-app.get('/dp', (req,res) => {
-  if(fs.existsSync('./dp.jpg')) res.sendFile(__dirname+'/dp.jpg');
-  else res.send('No DP yet');
-});
-
-app.listen(10000, () => console.log('Server running on 10000'));
-
-const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: {
-        headless: true,
-        executablePath: '/usr/bin/chromium',
-        args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu']
-    }
-});
-
-client.on('qr', async qr => {
-    console.log('QR received');
-    lastQR = await qrcode.toDataURL(qr);
-    console.log('Open your Render link to scan QR image!');
-});
-
-client.on('ready', async () => {
-    console.log('Ready!'); lastQR=null; updateDP();
-    setInterval(updateDP, 24*60*60*1000);
-});
-
-async function generateDP(days){
-    const canvas = createCanvas(800,800);
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle='#1a1c1e'; ctx.fillRect(0,0,800,800);
-    ctx.strokeStyle='#f5d6b8'; ctx.lineWidth=8;
-    ctx.beginPath(); ctx.arc(400,280,90,0,Math.PI*2); ctx.stroke();
-    ctx.fillStyle='#ffeedc';
-    ctx.font='bold 280px sans-serif'; ctx.fillText('jee',210,580);
-    ctx.font='bold 60px sans-serif'; ctx.fillText(`${days} days left`,190,680);
-    fs.writeFileSync('./dp.jpg', canvas.toBuffer('image/jpeg'));
-    return './dp.jpg';
+async function generateImage(days) {
+  const canvas = createCanvas(800, 800);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#0f0f0f'; ctx.fillRect(0,0,800,800);
+  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 120px Arial'; ctx.textAlign='center';
+  ctx.fillText(days, 400, 350);
+  ctx.font = 'bold 40px Arial'; ctx.fillText('DAYS LEFT', 400, 420);
+  ctx.font = '20px Arial'; ctx.fillStyle = '#a3a3a3'; ctx.fillText('JEE 2027', 400, 700);
+  return canvas.toBuffer('image/jpeg');
 }
 
-async function updateDP(){
-    const days = Math.ceil((JEE_DATE - new Date())/86400000);
-    const path = await generateDP(days>0?days:0);
-    const chats = await client.getChats();
-    const group = chats.find(c=>c.isGroup && c.name===GROUP_NAME);
-    if(group){
-        const media = require('whatsapp-web.js').MessageMedia.fromFilePath(path);
-        await client.setGroupIcon(group.id._serialized, media);
-        console.log('DP updated to '+days);
-    } else {
-        console.log('Group not found: ' + GROUP_NAME);
+async function startBot() {
+  const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+  const sock = makeWASocket({ auth: state, printQRInTerminal: true });
+
+  sock.ev.on('creds.update', saveCreds);
+
+  sock.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect, qr } = update;
+    if(qr){
+      latestQR = qr;
+      qrcode.generate(qr, {small: true});
+      console.log('QR Generated');
     }
+    if(connection === 'close'){
+      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+      if(shouldReconnect) startBot();
+    }
+    if(connection === 'open'){
+      console.log('Bot Connected!');
+      const examDate = new Date('2027-01-24');
+      const diff = Math.ceil((examDate - new Date()) / (1000*60*60*24));
+      const img = await generateImage(diff);
+      try{
+        await sock.groupUpdateSubject(GROUP_ID, `Academic Allies - ${diff} Days Left`);
+        await sock.updateProfilePicture(GROUP_ID, img);
+        console.log('DP Updated');
+      }catch(e){ console.log('DP Error', e.message); }
+    }
+  });
 }
-client.initialize();
+
+startBot();
+
+app.get('/', async (req,res)=>{
+  if(!latestQR) return res.send('<h2>Bot Starting... Refresh in 10 sec</h2><script>setTimeout(()=>location.reload(),5000)</script>');
+  const qrImg = await qrcode2.toDataURL(latestQR);
+  res.send(`<div style="text-align:center;font-family:sans-serif"><h2>Scan QR - JEE DP Bot</h2><img src="${qrImg}" style="width:300px"><p>Bot Alive - ${Math.ceil((new Date('2027-01-24')-new Date())/(1000*60*60*24))} days left</p><script>setTimeout(()=>location.reload(),20000)</script></div>`);
+});
+app.listen(PORT, ()=>console.log('Server on '+PORT));
