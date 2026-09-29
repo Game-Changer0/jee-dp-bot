@@ -3,7 +3,7 @@ const { useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/bai
 const qrcode = require('qrcode');
 const express = require('express');
 const pino = require('pino');
-const { Jimp, loadFont } = require('jimp');
+const Jimp = require('jimp');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -15,18 +15,15 @@ const EXAM_DATE = new Date('2027-01-24T00:00:00+05:30');
 function getDaysLeft(){ return Math.ceil((EXAM_DATE - new Date()) / (1000*60*60*24)); }
 
 async function generateImage(days){
-  const image = new Jimp({ width: 800, height: 800, color: '#ffffff' });
-  
-  const fontBig = await loadFont('sans-128-black');
-  const fontMed = await loadFont('sans-64-black');
-  const fontSmall = await loadFont('sans-32-black');
-  
-  image.print({ font: fontBig, x: 0, y: 150, maxWidth: 800, maxHeight: 200, text: days.toString(), alignmentX: 'center' });
-  image.print({ font: fontMed, x: 0, y: 350, maxWidth: 800, maxHeight: 100, text: 'DAYS LEFT', alignmentX: 'center' });
-  image.print({ font: fontSmall, x: 0, y: 500, maxWidth: 800, maxHeight: 100, text: 'JEE 2027 - Academic Allies', alignmentX: 'center' });
-  
-  const buf = await image.getBuffer('image/jpeg');
-  console.log('JIMP White DP created:', buf.length);
+  const image = new Jimp(800, 800, '#ffffff');
+  const fontBig = await Jimp.loadFont(Jimp.FONT_SANS_128_BLACK);
+  const fontMed = await Jimp.loadFont(Jimp.FONT_SANS_64_BLACK);
+  const fontSmall = await Jimp.loadFont(Jimp.FONT_SANS_32_BLACK);
+  image.print(fontBig, 0, 150, { text: days.toString(), alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER }, 800, 200);
+  image.print(fontMed, 0, 350, { text: 'DAYS LEFT', alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER }, 800, 100);
+  image.print(fontSmall, 0, 500, { text: 'JEE 2027 - Academic Allies', alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER }, 800, 100);
+  const buf = await image.getBufferAsync(Jimp.MIME_JPEG);
+  console.log('Image created', buf.length);
   return buf;
 }
 
@@ -34,23 +31,21 @@ async function updateDP(sock){
   try{
     const days = getDaysLeft();
     const img = await generateImage(days);
-    console.log('Updating DP...');
     await sock.updateProfilePicture(GROUP_ID, img);
-    console.log(`✅ DP UPDATED SUCCESS: ${days} days - WHITE BG`);
-  }catch(e){ console.log('❌ DP Error:', e.message, e.stack); }
+    console.log(`✅ DP UPDATED: ${days} days`);
+  }catch(e){ console.log('❌ DP Error:', e.message); }
 }
 
 async function startBot(){
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
-  const sock = makeWASocket({ auth: state, logger: pino({ level: 'silent' }), printQRInTerminal: false });
+  const sock = makeWASocket({ auth: state, logger: pino({ level: 'silent' }) });
   sockRef = sock;
   sock.ev.on('creds.update', saveCreds);
   sock.ev.on('connection.update', async (update)=>{
     const { connection, lastDisconnect, qr } = update;
-    if(qr){ latestQR = qr; console.log('QR Generated'); }
+    if(qr) latestQR = qr;
     if(connection === 'close'){
-      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-      if(shouldReconnect) startBot();
+      if(lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) startBot();
     }
     if(connection === 'open'){
       console.log('✅ Bot Connected!');
@@ -62,13 +57,13 @@ async function startBot(){
 startBot();
 
 app.get('/', async (req,res)=>{
-  if(!latestQR) return res.send(`<h2>✅ Connected ${getDaysLeft()} days left</h2><a href="/update">Force Update DP</a>`);
+  if(!latestQR) return res.send(`<h2>Connected ${getDaysLeft()} days</h2><a href="/update">Force Update</a>`);
   const qrImg = await qrcode.toDataURL(latestQR);
-  res.send(`<div style="text-align:center"><h2>Scan QR</h2><img src="${qrImg}" style="width:300px"><script>setTimeout(()=>location.reload(),20000)</script></div>`);
+  res.send(`<div style="text-align:center"><h2>Scan QR</h2><img src="${qrImg}" width="300"><script>setTimeout(()=>location.reload(),20000)</script></div>`);
 });
 app.get('/update', async (req,res)=>{
-  if(!sockRef) return res.send('Bot not ready');
+  if(!sockRef) return res.send('Not ready');
   await updateDP(sockRef);
-  res.send('Updated! Check group');
+  res.send('Updated!');
 });
-app.listen(PORT, ()=>console.log('Server on '+PORT));
+app.listen(PORT, ()=>console.log('Server '+PORT));
