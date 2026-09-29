@@ -19,18 +19,27 @@ function getDaysLeft() {
 async function generateImage(days) {
   const canvas = createCanvas(800, 800);
   const ctx = canvas.getContext('2d');
+  
+  // Background gradient
   ctx.fillStyle = '#0f0f0f';
   ctx.fillRect(0, 0, 800, 800);
+  
+  // Big number - use default sans-serif that exists on Linux
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 140px Arial';
+  ctx.font = 'bold 200px sans-serif';
   ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
   ctx.fillText(days.toString(), 400, 350);
-  ctx.font = 'bold 40px Arial';
-  ctx.fillText('DAYS LEFT', 400, 420);
-  ctx.font = '22px Arial';
-  ctx.fillStyle = '#888888';
-  ctx.fillText('JEE 2027 - Academic Allies', 400, 700);
-  return canvas.toBuffer('image/jpeg');
+  
+  // Text
+  ctx.font = 'bold 50px sans-serif';
+  ctx.fillText('DAYS LEFT', 400, 450);
+  
+  ctx.font = '24px sans-serif';
+  ctx.fillStyle = '#aaaaaa';
+  ctx.fillText('JEE 2027 - Academic Allies', 400, 720);
+  
+  return canvas.toBuffer('image/png');
 }
 
 async function updateDP(sock) {
