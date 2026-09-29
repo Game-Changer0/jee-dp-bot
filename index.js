@@ -9,13 +9,14 @@ const JEE_DATE = new Date('2027-01-22');
 
 const app = express();
 app.get('/', (req,res) => res.send('Bot Alive - JEE ' + Math.ceil((JEE_DATE - new Date())/86400000) + ' days left'));
-app.listen(10000);
+app.listen(10000, () => console.log('Server running on 10000'));
 
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        executablePath: '/opt/render/.cache/puppeteer/chrome/linux-121.0.6167.85/chrome-linux64/chrome',
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
     }
 });
 
@@ -51,6 +52,8 @@ async function updateDP(){
         const media = require('whatsapp-web.js').MessageMedia.fromFilePath(path);
         await client.setGroupIcon(group.id._serialized, media);
         console.log('DP updated to '+days);
+    } else {
+        console.log('Group not found: ' + GROUP_NAME);
     }
 }
 client.initialize();
