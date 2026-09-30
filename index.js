@@ -29,7 +29,6 @@ function getDaysLeft(){
 async function generateDP(){
   const days = getDaysLeft();
   const img = new Jimp(500,500);
-  // colorful gradient manually
   for(let y=0;y<500;y++){
     for(let x=0;x<500;x++){
       const r = Math.floor(255 - x*0.3);
@@ -38,21 +37,13 @@ async function generateDP(){
       img.setPixelColor(Jimp.rgbaToInt(r,g,b,255), x, y);
     }
   }
-  const fontBig = await Jimp.loadFont(Jimp.FONT_SANS_64_WHITE);
-  const fontMid = await Jimp.loadFont(Jimp.FONT_SANS_32_WHITE);
-  const fontSmall = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
-
-  // white box
   const box = new Jimp(440,440, 0xffffffE6);
   img.composite(box,30,30);
-
   const blackFontBig = await Jimp.loadFont(Jimp.FONT_SANS_64_BLACK);
   const blackFontMid = await Jimp.loadFont(Jimp.FONT_SANS_32_BLACK);
-
   img.print(blackFontBig, 0, 140, {text: `${days}`, alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER}, 500, 100);
   img.print(blackFontMid, 0, 230, {text: 'DAYS LEFT', alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER}, 500, 50);
   img.print(blackFontMid, 0, 280, {text: 'JEE 2027', alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER}, 500, 50);
-
   return await img.getBufferAsync(Jimp.MIME_PNG);
 }
 
@@ -64,11 +55,28 @@ async function updateGroupDP(){
     for(const id in groups){
       try{
         await sock.updateProfilePicture(id, buffer);
-        console.log(`✅ DP UPDATED ${id} - ${getDaysLeft()} days`);
+        console.log(`✅ DP UPDATED ${id}`);
         await new Promise(r=>setTimeout(r,3000));
       }catch(e){ console.log(`DP fail ${id}:`, e.message); }
     }
   }catch(e){ console.log('DP Error', e.message); }
+}
+
+async function checkAndTurnOffDisappearing(){
+  if(!sock ||!isConnected) return;
+  try{
+    const groups = await sock.groupFetchAllParticipating();
+    for(const id in groups){
+      const meta = groups[id];
+      // ephemeralDuration >0 means ON
+      if(meta.ephemeralDuration && meta.ephemeralDuration!==0){
+        console.log(`[POLL] Disappearing ON found in ${id} (${meta.ephemeralDuration}s) - turning OFF`);
+        await sock.groupToggleEphemeral(id, 0);
+        await sock.sendMessage(id, { text: `⚠️ Disappearing messages was ON — turned OFF automatically to protect JEE countdown.` });
+        console.log(`✅ [POLL] Turned OFF in ${id}`);
+      }
+    }
+  }catch(e){ console.log('Poll error', e.message); }
 }
 
 async function startBot(){
@@ -87,19 +95,20 @@ async function startBot(){
       isConnected=true; qrString=null;
       console.log('Bot Connected!');
       await updateGroupDP();
+      // Start polling every 20 sec after connect
+      setInterval(checkAndTurnOffDisappearing, 20000);
+      // First check after 10 sec
+      setTimeout(checkAndTurnOffDisappearing, 10000);
     }
   });
 
-  // ANTI-DISAPPEARING - WORKING
   sock.ev.on('groups.update', async (updates)=>{
     for(const upd of updates){
       try{
-        console.log('groups.update event', upd);
         if(upd.ephemeralDuration!== undefined && upd.ephemeralDuration!== 0){
-          console.log(`Disappearing ON in ${upd.id}, turning OFF...`);
+          console.log(`[EVENT] Disappearing ON in ${upd.id}`);
           await new Promise(r=>setTimeout(r,2000));
           await sock.groupToggleEphemeral(upd.id, 0);
-          console.log(`✅ Turned OFF disappearing in ${upd.id}`);
           const author = upd.author? upd.author.split('@')[0] : 'Someone';
           await sock.sendMessage(upd.id, { text: `⚠️ Disappearing messages turned ON by @${author} — turned OFF automatically.`, mentions: upd.author? [upd.author] : [] });
         }
@@ -108,7 +117,7 @@ async function startBot(){
   });
 }
 
-cron.schedule('30 18 * * *', ()=>{ console.log('Midnight update'); updateGroupDP(); }, {timezone:'UTC'});
+cron.schedule('30 18 * * *', ()=>{ updateGroupDP(); }, {timezone:'UTC'});
 
 app.get('/', async (req,res)=>{
   if(isConnected) res.send(`<h1>✅ Connected - ${getDaysLeft()} Days Left</h1><p><a href="/get-session">Get Session</a></p>`);
