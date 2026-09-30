@@ -1,112 +1,203 @@
-const makeWASocket = require('@whiskeysockets/baileys').default;
-const { useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
-const qrcode = require('qrcode');
-const express = require('express');
-const pino = require('pino');
-const Jimp = require('jimp');
 const fs = require('fs');
-try{ fs.rmSync('auth_info', {recursive:true, force:true}); console.log('WIPED AUTH FOR QR RESET'); }catch(e){}
 const path = require('path');
-
-const GROUP_ID = '120363411370862499@g.us';
-const EXAM_DATE = new Date('2027-01-24T00:00:00+05:30');
+const express = require('express');
+const QRCode = require('qrcode');
+const Jimp = require('jimp');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-let latestQR = '', sockRef = null;
+const TARGET_DATE = new Date('2027-01-22T00:00:00+05:30'); // JEE 2027
+const GROUP_JID = process.env.GROUP_JID || '120363411370862499@g.us'; // your group
 
-function getDaysLeft(){ return Math.ceil((EXAM_DATE - new Date()) / (1000*60*60*24)); }
+let sock = null;
+let qrCodeData = null;
+let isConnected = false;
 
-async function generateImage(days){
-  const image = new Jimp(800, 800, '#0f172a');
-  // yellow bottom bar
-  const bar = new Jimp(800, 130, '#facc15');
-  image.composite(bar, 0, 670);
-  // dark card
-  const card = new Jimp(620, 420, '#1e293b');
-  image.composite(card, 90, 90);
-  // blue circle decoration
-  const circle = new Jimp(180, 180, '#3b82f6');
-  circle.circle();
-  image.composite(circle, 40, 40);
+// --- Days Left (starts 114 from Sep 30) ---
+function getDaysLeft() {
+  const now = new Date();
+  const target = new Date(TARGET_DATE);
+  // IST midnight calc
+  const diff = target - now;
+  const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+  return Math.max(0, days);
+}
+
+// --- Colored DP (Navy + Blue + Yellow) NOT white/black ---
+async function generateColoredDP(days) {
+  const size = 640;
+  const image = new Jimp(size, size, '#0A1931'); // dark navy bg
+
+  // Blue circle
+  const blueCircle = new Jimp(size - 100, size - 100, '#185ADB');
+  blueCircle.circle();
+  image.composite(blueCircle, 50, 50);
+
+  // Yellow accent
+  const yellow = new Jimp(200, 200, '#FFC947');
+  yellow.circle();
+  image.composite(yellow, 430, 20);
 
   const fontBig = await Jimp.loadFont(Jimp.FONT_SANS_128_WHITE);
   const fontMed = await Jimp.loadFont(Jimp.FONT_SANS_64_WHITE);
-  const fontSmall = await Jimp.loadFont(Jimp.FONT_SANS_32_BLACK);
-  const fontTiny = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
+  const fontSmall = await Jimp.loadFont(Jimp.FONT_SANS_32_WHITE);
 
-  image.print(fontTiny, 0, 115, { text: 'EVERY DAY COUNTS  •  JEE 2027', alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER }, 800, 30);
-  image.print(fontBig, 0, 160, { text: days.toString(), alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER }, 800, 200);
-  image.print(fontMed, 0, 340, { text: 'DAYS LEFT', alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER }, 800, 100);
-  image.print(fontSmall, 0, 705, { text: 'ACADEMIC ALLIES  •  LET\'S CRACK IT', alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER }, 800, 50);
+  // Days number - Yellow
+  image.print(fontBig, 0, 140, {
+    text: `${days}`,
+    alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER
+  }, size, size);
+
+  // Text
+  image.print(fontMed, 0, 300, {
+    text: 'DAYS LEFT',
+    alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER
+  }, size, size);
+
+  image.print(fontSmall, 0, 400, {
+    text: 'JEE 2027',
+    alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER
+  }, size, size);
 
   return await image.getBufferAsync(Jimp.MIME_JPEG);
 }
 
-async function updateDP(sock){
-  try{
+async function updateGroupDP() {
+  if (!sock ||!isConnected) return;
+  try {
     const days = getDaysLeft();
-    const img = await generateImage(days);
-    await sock.updateProfilePicture(GROUP_ID, img);
-    console.log(`✅ DP UPDATED COLORED: ${days}`);
-  }catch(e){ console.log('❌ DP Error:', e.message, e); }
-}
-
-async function restoreSession(){
-  if(process.env.SESSION_BASE64){
-    try{
-      const data = JSON.parse(Buffer.from(process.env.SESSION_BASE64, 'base64').toString());
-      if(!fs.existsSync('auth_info')) fs.mkdirSync('auth_info');
-      for(const [file, content] of Object.entries(data)){
-        fs.writeFileSync(path.join('auth_info', file), JSON.stringify(content));
-      }
-      console.log('✅ Session restored from ENV - NO QR NEEDED');
-    }catch(e){ console.log('Restore failed', e.message); }
+    const buffer = await generateColoredDP(days);
+    await sock.updateProfilePicture(GROUP_JID, buffer);
+    console.log(`✅ DP UPDATED COLORED - ${days} days left`);
+    // Update Group Name by midnight
+    try {
+      await sock.groupUpdateSubject(GROUP_JID, `JEE 2027 - ${days} Days Left 🔥`);
+      console.log(`✅ Name updated: ${days} Days Left`);
+    } catch (e) { console.log('Name update needs admin:', e.message); }
+  } catch (e) {
+    console.log('DP update error:', e.message);
   }
 }
 
-async function startBot(){
-  await restoreSession();
+function scheduleMidnightUpdate() {
+  const now = new Date();
+  const nowIST = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const nextMidnight = new Date(nowIST);
+  nextMidnight.setHours(24, 0, 5, 0); // 00:00:05 IST
+  const msToMidnight = nextMidnight - nowIST;
+  console.log(`Next auto update in ${Math.round(msToMidnight / 1000 / 60)} mins (midnight IST)`);
+
+  setTimeout(() => {
+    updateGroupDP();
+    setInterval(updateGroupDP, 24 * 60 * 60 * 1000);
+  }, msToMidnight);
+}
+
+// --- Restore session from ENV ---
+if (process.env.SESSION_BASE64) {
+  try {
+    if (!fs.existsSync('auth_info')) fs.mkdirSync('auth_info', { recursive: true });
+    const data = JSON.parse(Buffer.from(process.env.SESSION_BASE64, 'base64').toString());
+    for (const f in data) fs.writeFileSync(path.join('auth_info', f), data[f]);
+    console.log('Session restored from ENV');
+  } catch (e) { console.log('ENV restore failed', e.message); }
+}
+
+async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
-  const sock = makeWASocket({ auth: state, logger: pino({ level: 'silent' }) });
-  sockRef = sock;
+  const { version } = await fetchLatestBaileysVersion();
+
+  sock = makeWASocket({
+    version,
+    auth: state,
+    printQRInTerminal: false,
+    browser: ['JEE Bot', 'Chrome', '1.0']
+  });
+
   sock.ev.on('creds.update', saveCreds);
-  sock.ev.on('connection.update', async (update)=>{
+
+  sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
-    if(qr) latestQR = qr;
-    if(connection === 'close'){
-      if(lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) startBot();
+    if (qr) {
+      qrCodeData = qr;
+      isConnected = false;
+      console.log('QR generated - scan it!');
     }
-    if(connection === 'open'){
-      console.log('✅ Bot Connected!');
-      latestQR = '';
-      await updateDP(sock);
+    if (connection === 'open') {
+      qrCodeData = null;
+      isConnected = true;
+      console.log('Bot Connected!');
+      await updateGroupDP();
+      scheduleMidnightUpdate();
+    }
+    if (connection === 'close') {
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
+      isConnected = false;
+      console.log('Connection closed:', statusCode);
+      if (statusCode === DisconnectReason.loggedOut) {
+        console.log('Logged out - wiping auth');
+        try { fs.rmSync('auth_info', { recursive: true, force: true }); } catch {}
+        qrCodeData = null;
+      }
+      if (statusCode!== DisconnectReason.loggedOut) {
+        setTimeout(startBot, 3000);
+      }
     }
   });
 }
+
 startBot();
 
-app.get('/', async (req,res)=>{
-  if(!latestQR) return res.send(`<h2>✅ Connected - ${getDaysLeft()} days</h2><p>Colored DP Active</p><a href="/update">Force Update DP</a><br><br><a href="/get-session">GET SESSION_BASE64 - SAVE THIS</a>`);
-  const qrImg = await qrcode.toDataURL(latestQR);
-  res.send(`<div style="text-align:center"><h2>Scan QR - LAST TIME</h2><img src="${qrImg}" width="320"><p>After scan, go to /get-session</p><script>setTimeout(()=>location.reload(),20000)</script></div>`);
+// --- Routes ---
+app.get('/', async (req, res) => {
+  // Reset via URL?reset=1 -> fixes Disk ghost issue without premium shell
+  if (req.query.reset === '1') {
+    try { fs.rmSync('auth_info', { recursive: true, force: true }); } catch {}
+    qrCodeData = null;
+    isConnected = false;
+    res.send('Auth wiped! <a href="/">Go back</a> - QR will appear in 5 sec. Refresh.');
+    setTimeout(() => startBot(), 1000);
+    return;
+  }
+
+  if (isConnected) {
+    const days = getDaysLeft();
+    res.send(`
+      <h1>✅ Connected - ${days} Days Left</h1>
+      <p>Colored DP Active | Auto update at midnight IST</p>
+      <p>Group: ${GROUP_JID}</p>
+      <a href="/force-update"><button>Force Update DP Now</button></a><br><br>
+      <a href="/get-session">Get SESSION_BASE64</a> |
+      <a href="/?reset=1" style="color:red">Reset & Get New QR (if needed)</a>
+    `);
+  } else if (qrCodeData) {
+    const qrImg = await QRCode.toDataURL(qrCodeData);
+    res.send(`<h2>Scan QR - ${getDaysLeft()} Days Left</h2><img src="${qrImg}" width="300"><br><p>Refresh if expired</p><script>setTimeout(()=>location.reload(),30000)</script>`);
+  } else {
+    res.send('<h2>Starting bot... refresh in 3 sec</h2><script>setTimeout(()=>location.reload(),3000)</script>');
+  }
 });
-app.get('/update', async (req,res)=>{
-  if(!sockRef) return res.send('Not ready');
-  await updateDP(sockRef);
-  res.send('Colored DP Updated!');
+
+app.get('/force-update', async (req, res) => {
+  await updateGroupDP();
+  res.send(`Forced! ${getDaysLeft()} days DP updated. <a href="/">Back</a>`);
 });
-app.get('/get-session', (req,res)=>{
-  try{
+
+app.get('/get-session', (req, res) => {
+  try {
+    if (!fs.existsSync('auth_info')) return res.send('No auth yet - scan QR first');
     const files = fs.readdirSync('auth_info');
     const data = {};
-    for(const f of files){ data[f] = JSON.parse(fs.readFileSync(path.join('auth_info', f))); }
+    files.forEach(f => { data[f] = fs.readFileSync(path.join('auth_info', f), 'utf-8'); });
     const b64 = Buffer.from(JSON.stringify(data)).toString('base64');
-    res.send(`<h3>Copy this FULL and add to Render ENV as SESSION_BASE64</h3><textarea style="width:95%;height:350px">${b64}</textarea>`);
-  }catch(e){ res.send('Scan first! '+e.message); }
+    res.send(`<textarea style="width:100%;height:300px">${b64}</textarea><p>Copy this to Render ENV as SESSION_BASE64</p>`);
+  } catch (e) { res.send('Error: ' + e.message); }
 });
-app.get('/logout', (req,res)=>{
-  try{ fs.rmSync('auth_info', {recursive:true, force:true}); }catch(e){}
-  res.send('Session cleared! Now Clear cache & Deploy');
+
+app.get('/logout', (req, res) => {
+  try { fs.rmSync('auth_info', { recursive: true, force: true }); } catch {}
+  res.send('Session cleared! Now deploy again or go to /?reset=1');
 });
-app.listen(PORT, ()=>console.log('Server '+PORT));
+
+app.listen(PORT, () => console.log('Server on ' + PORT));
