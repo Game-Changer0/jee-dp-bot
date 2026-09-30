@@ -2,13 +2,12 @@
   "name": "jee-dp-bot",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
+  "scripts": { "start": "node index.js" },
   "dependencies": {
-    "@whiskeysockets/baileys": "6.7.8",
+    "@whiskeysockets/baileys": "^6.7.18",
     "express": "^4.18.2",
-    "jimp": "0.22.10",
-    "qrcode": "^1.5.3"
+    "qrcode": "^1.5.3",
+    "jimp": "^0.22.12",
+    "node-cron": "^3.0.3"
   }
 }
